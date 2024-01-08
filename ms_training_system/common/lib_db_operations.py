@@ -25,7 +25,7 @@ class Connector(log.LoggerMixin):
         :param str query:       Строка с запросом.
         :param tuple params:    Параметры запроса.
         :param bool commit:     Выполнять коммит транзакции? По умолчанию false.
-        :param str result:      В каком виде возвращать результат запроса: fetchall, fetchall, dict (данные в словаре,
+        :param str result:      В каком виде возвращать результат запроса: fetchone, fetchall, dict (данные в словаре,
                                 где key - наименование колонки). По умолчанию результат не возвращается.
         :return:                None или полученные строки в заданном виде.
         """
@@ -47,7 +47,7 @@ class Connector(log.LoggerMixin):
                         row_dict = {}
                         for i in range(len(columns)):
                             row_dict[columns[i]] = row[i]
-                            res.append(row_dict)
+                        res.append(row_dict)
                 return res
             except psycopg2.Error as e:
                 self.logger.error(f'Ошибка при выполнении SQL запроса: {e}')
@@ -86,19 +86,39 @@ class DbDataOperations(log.LoggerMixin):
         super().__init__()
         self.connector = connector
 
-    def data_insert(self, table: str, data: dict):
+    def data_insert(self, table: str, data: dict, extensions: str, result: str):
         """Вставка строки в таблицу БД
 
-        :param str table: Наименование таблицы, куда вставляем данные.
-        :param dict data: Данные, которые вставляем в таблицу в словаре формата: {'column': 'value', ...}.
+        :param str table:       Наименование таблицы, куда вставляем данные.
+        :param dict data:       Данные, которые вставляем в таблицу в словаре формата: {'column': 'value', ...}.
+        :param str extensions:  Строка с дополнительными параметрами запроса (например 'RETURNING id').
+        :param str result:      В каком виде возвращать результат запроса: fetchone, fetchall, dict (данные в словаре,
+                                где key - наименование колонки). По умолчанию результат не возвращается.
+        :return:                None или полученные строки в заданном виде.
         """
         columns = tuple(data.keys())
         values = tuple(data.values())
         columns_str = ', '.join(columns)
         values_str = ', '.join(['%s'] * len(values))
 
-        query = f'INSERT INTO {table} ({columns_str}) VALUES ({values_str})'
-        self.connector.execute(query, values, commit=True)
+        query = f'INSERT INTO {table} ({columns_str}) VALUES ({values_str}) {extensions}'
+        res = self.connector.execute(query, values, commit=True, result=result)
+        return res
+
+    def data_delete(self, table: str, condition: str = None, fulldelete: bool = False):
+        """Обновление строки в таблице БД
+
+        :param str table:       Наименование таблицы в которой удаляем данные.
+        :param str condition:   Условия выборки в синтаксисе SQL, которые указываются после WHERE.
+        :param Bool fulldelete: Указывается True, если удаляем все записи в таблице, по умолчанию False
+        """
+
+        if fulldelete:
+            query = f'DELETE FROM {table}'
+        else:
+            query = f'DELETE FROM {table} WHERE {condition}'
+
+        self.connector.execute(query, commit=True)
 
     def data_update(self, table: str, data: dict, condition: str = None):
         """Обновление строки в таблице БД
